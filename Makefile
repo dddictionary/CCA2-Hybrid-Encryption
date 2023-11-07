@@ -1,41 +1,47 @@
-SHELL = bash
-main = readme
-css = ""
-extras := "-H csshead -H ../../../html/light.css -H cssfoot --filter pandoc-citeproc"
-gmakefile := "../../pandoc_makefile"
-pubdocs := $(wildcard ../*-skel.c ../*.h) \
-	../prf.c \
-	../Makefile \
-	../.gitignore \
-	../kem-test.sh \
-	../test.sh \
-	../examples/ \
-	../tests/ \
-	bad-code.jpg \
-	readme.html
-pubdir := /home/wes/repos/ccny/teaching/codearchives/csc480-projects/p1/
-gradingdocs := $(wildcard ../*.c ../*.h) ../Makefile
-gradingdir := /tmp/480grading
+SOURCES := $(wildcard *.c)
+OBJECTS := $(SOURCES:.c=.o)
+HEADERS := $(wildcard *.h)
+TARGETS := kem-enc
+TSOURCE := $(wildcard tests/*.c)
+TESTS   := $(TSOURCE:.c=)
 
-$(main).html: %.html: $(main).mkd csshead cssfoot
-	make -f $(gmakefile) main=$(main) css=$(css) moreargs=$(extras)
+COMMON   := -O2 -Wall
+CFLAGS   := $(CFLAGS) $(COMMON)
+CC       := gcc
+LDADD    := -lcrypto -lssl -lgmp
+LD       := $(CC)
+LDFLAGS  := # -L/usr/local/lib/
+DEFS     :=
+ifeq ($(shell uname),Linux)
+DEFS += -DLINUX
+endif
 
-csshead :
-	echo '<style type="text/css">' >> csshead
+IMPL :=ske.o  rsa.o kem-enc.o
+ifdef skel
+IMPL := $(IMPL:.o=-skel.o)
+endif
 
-cssfoot :
-	echo "</style>" > cssfoot
+all : $(TARGETS) tests
+.PHONY : all
 
-.PHONY : pub
-pub : $(pubdocs)
-	mkdir -p $(pubdir)
-	cp -r $(pubdocs) $(pubdir)
-	for f in $(pubdir)/*-skel.c ; do mv $$f $${f/-skel.c/.c} ; done
+# {{{ for debugging
+debug : CFLAGS += -g -DDEBUG=1
+debug : $(TARGETS) $(TESTS)
+.PHONY : debug
+# }}}
 
-grading : $(gradingdocs)
-	mkdir -p $(gradingdir)
-	cp $(gradingdocs) $(gradingdir)
+$(OBJECTS) : %.o : %.c $(HEADERS)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(TARGETS) : $(IMPL) prf.o
+	$(LD) $(LDFLAGS) -o $@ $^ $(LDADD)
+
+tests : $(TESTS)
+.PHONY : tests
+
+$(TESTS) : % : %.o $(filter-out kem-enc.o,$(IMPL)) prf.o
+	$(LD) $(LDFLAGS) -o $@ $^ $(LDADD)
 
 .PHONY : clean
 clean :
-	rm -f csshead cssfoot readme.html
+	rm -f $(OBJECTS) $(TARGETS) $(TESTS) $(TSOURCE:.c=.o)

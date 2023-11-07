@@ -57,6 +57,51 @@ int rsa_keyGen(size_t keyBits, RSA_KEY* K)
 	 * the right length, and then test for primality (see the ISPRIME
 	 * macro above).  Once you've found the primes, set up the other
 	 * pieces of the key ({en,de}crypting exponents, and n=pq). */
+
+	mpz_t phi, p, q;
+	mpz_inits(phi, p, q, NULL);
+	size_t factorBytes = keyBits / 16;
+	unsigned char *buf = malloc(factorBytes);
+
+	//generate p
+	randBytes(buf, factorBytes);
+	BYTES2Z(p, buf, factorBytes);
+	if(ISPRIME(p) != 2) {
+		mpz_nextprime(p, p);
+	}
+	mpz_set(K->p, p);
+
+	//generate q
+	randBytes(buf, factorBytes);
+	BYTES2Z(q, buf, factorBytes);
+	if(ISPRIME(q) != 2) {
+		mpz_nextprime(q, q);
+	}
+	mpz_set(K->q, q);
+
+	//compute n
+	mpz_mul(K->n, p, q);
+
+	//generate e
+	mpz_sub_ui(p, p, 1);
+	mpz_sub_ui(q, q, 1);
+	mpz_mul(phi, p, q);
+	mpz_set_ui(p, 1);
+
+	do 
+	{
+		mpz_add_ui(p,p,1);
+		mpz_gcd(q,phi,p);
+	} while (mpz_cmp_ui(q, 1) != 0);
+
+	mpz_set(K->e, p);
+
+	//compute d
+	mpz_invert(K->d, p, phi);
+
+	free(buf);
+	mpz_clears(phi, p, q, NULL);
+
 	return 0;
 }
 
@@ -65,13 +110,29 @@ size_t rsa_encrypt(unsigned char* outBuf, unsigned char* inBuf, size_t len,
 {
 	/* TODO: write this.  Use BYTES2Z to get integers, and then
 	 * Z2BYTES to write the output buffer. */
-	return 0; /* TODO: return should be # bytes written */
+
+	size_t bytesWritten;
+	mpz_t cipherText, plainText;
+	mpz_inits(cipherText, plainText, NULL);
+	BYTES2Z(plainText, inBuf, len);
+	mpz_powm(cipherText, plainText, K->e, K->n);
+	Z2BYTES(outBuf, bytesWritten, cipherText);
+	mpz_clears(cipherText, plainText, NULL);
+
+	return bytesWritten; /* TODO: return should be # bytes written */
 }
 size_t rsa_decrypt(unsigned char* outBuf, unsigned char* inBuf, size_t len,
 		RSA_KEY* K)
 {
 	/* TODO: write this.  See remarks above. */
-	return 0;
+	size_t bytesWritten;
+	mpz_t cipherText, plainText;
+	mpz_inits(cipherText, plainText, NULL);
+	BYTES2Z(cipherText, inBuf, len);
+	mpz_powm(plainText, cipherText, K->d, K->n);
+	Z2BYTES(outBuf, bytesWritten, plainText);
+	mpz_clears(cipherText, plainText, NULL);
+	return bytesWritten;
 }
 
 size_t rsa_numBytesN(RSA_KEY* K)
